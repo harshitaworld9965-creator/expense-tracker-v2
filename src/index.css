@@ -1,0 +1,33 @@
+/* Fonts must be imported before Tailwind. */
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+/* Design tokens — these generate utilities like bg-paper, text-ink, shadow-card,
+   font-serif, and are also exposed as CSS variables (var(--color-ink), etc.). */
+@theme {
+  --color-paper: #F4F3EE;
+  --color-surface: #FFFFFF;
+  --color-ink: #16211C;
+  --color-ink-soft: #48524C;
+  --color-muted: #8B918A;
+  --color-faint: #B7BCB4;
+  --color-line: #E6E3D9;
+  --color-line-soft: #EFEDE4;
+  --color-accent: #0F5A47;
+  --color-accent-dark: #0A4235;
+  --color-danger: #B23A3A;
+
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-serif: 'Fraunces', Georgia, 'Times New Roman', serif;
+
+  --shadow-card: 0 1px 2px rgba(22,33,28,.04), 0 14px 30px -18px rgba(22,33,28,.20);
+  --shadow-stat: 0 1px 2px rgba(22,33,28,.05);
+}
+
+/* Subtle load-in for the main blocks. */
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.animate-rise { animation: rise .4s ease both; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
