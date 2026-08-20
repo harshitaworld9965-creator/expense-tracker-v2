@@ -445,7 +445,8 @@ export default function App() {
                 sub={view === 'current' ? 'Add one above and it will show up here.' : 'Expenses you settle will collect here.'}
               />
             ) : (
-              <table className="w-full border-collapse [&_tbody_tr:last-child_td]:border-b-0">
+              <>
+              <table className="hidden md:table w-full border-collapse [&_tbody_tr:last-child_td]:border-b-0">
                 <thead>
                   <tr>
                     {['Date', 'Bill description', 'Category', 'Amount', 'Receipt', ''].map((h, i) => (
@@ -484,6 +485,42 @@ export default function App() {
                   ))}
                 </tbody>
               </table>
+
+              {/* Mobile: card list. A wide table can't fit a phone, so Settle/Delete
+                  were scrolled off-screen. Below md we show a card per expense instead. */}
+              <div className="md:hidden">
+                {listed.map(e => (
+                  <div key={e.id} className="p-4 border-b border-line-soft last:border-b-0">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-[15px] font-semibold text-ink truncate">{e.vendor || '—'}</div>
+                        <div className="text-[13px] text-muted mt-0.5">{fmtDay(e.spent_on)}</div>
+                      </div>
+                      <div className="text-[17px] font-bold text-ink tabular-nums whitespace-nowrap">{inr.format(e.amount)}</div>
+                    </div>
+                    <div className="flex items-center gap-2.5 flex-wrap mt-3">
+                      <span className="inline-flex items-center gap-1.5 text-[12px] font-semibold px-2.5 py-[3px] rounded-full"
+                        style={{ color: colorFor(e.category), background: colorFor(e.category) + '1F' }}>
+                        <span className="w-2 h-2 rounded-full" style={{ background: colorFor(e.category) }} />
+                        {e.category}
+                      </span>
+                      {e.receipt_url && (
+                        <a href={e.receipt_url} target="_blank" rel="noreferrer"
+                          className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-accent">
+                          <Icon name="receipt" size={15} strokeWidth={1.7} /> Receipt
+                        </a>
+                      )}
+                      <div className="ml-auto flex gap-2">
+                        <button className={pillSettle} onClick={() => setSettled(e.id, view !== 'settled')}>
+                          {view === 'settled' ? 'Reopen' : 'Settle'}
+                        </button>
+                        <button className={pillDelete} onClick={() => deleteExpense(e.id)}>Delete</button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              </>
             )}
           </div>
         </main>
