@@ -145,6 +145,7 @@ export default function App() {
   const [amount, setAmount] = useState('')
   const [notes, setNotes] = useState('')
   const [file, setFile] = useState(null)
+  const [editingId, setEditingId] = useState(null)   // null = adding, else = editing this row
 
   useEffect(() => { loadExpenses() }, [])
 
@@ -163,27 +164,58 @@ export default function App() {
     if (v === '' || /^\d*\.?\d*$/.test(v)) setAmount(v)
   }
 
+  function resetForm() {
+    setVendor(''); setAmount(''); setNotes(''); setFile(null)
+    setSpentOn(today()); setCategory(BASE_CATEGORIES[0]); setCustomCategory('')
+    setEditingId(null)
+    const el = document.getElementById('receipt-input'); if (el) el.value = ''
+  }
+
+  // Load a row back into the form and switch to edit mode.
+  function startEdit(exp) {
+    setEditingId(exp.id)
+    setSpentOn(exp.spent_on || today())
+    setVendor(exp.vendor || '')
+    if (BASE_CATEGORIES.includes(exp.category)) { setCategory(exp.category); setCustomCategory('') }
+    else { setCategory(CUSTOM); setCustomCategory(exp.category || '') }
+    setAmount(exp.amount != null ? String(exp.amount) : '')
+    setNotes(exp.notes || '')
+    setFile(null)
+    const el = document.getElementById('receipt-input'); if (el) el.value = ''
+    setError('')
+    document.getElementById('expense-form')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+
   async function addExpense() {
     if (!amount || Number(amount) <= 0) { setError('Enter an amount greater than zero.'); return }
     const finalCategory = category === CUSTOM ? customCategory.trim() : category
     if (category === CUSTOM && !finalCategory) { setError('Enter a name for the custom category.'); return }
     setSaving(true); setError('')
     try {
-      let receipt_url = null
+      let receipt_url            // stays undefined unless a new file is uploaded
       if (file) {
         const path = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, '_')}`
         const { error: upErr } = await supabase.storage.from('receipts').upload(path, file)
         if (upErr) throw upErr
         receipt_url = supabase.storage.from('receipts').getPublicUrl(path).data.publicUrl
       }
-      const { error: insErr } = await supabase.from('expenses').insert({
-        spent_on: spentOn, vendor: vendor || null, category: finalCategory,
-        amount: Number(amount), notes: notes || null, receipt_url, settled: false,
-      })
-      if (insErr) throw insErr
-      setVendor(''); setAmount(''); setNotes(''); setFile(null)
-      setSpentOn(today()); setCategory(BASE_CATEGORIES[0]); setCustomCategory('')
-      const el = document.getElementById('receipt-input'); if (el) el.value = ''
+      if (editingId) {
+        // Update: only overwrite the receipt if a new one was picked, else keep the old.
+        const patch = {
+          spent_on: spentOn, vendor: vendor || null, category: finalCategory,
+          amount: Number(amount), notes: notes || null,
+        }
+        if (receipt_url !== undefined) patch.receipt_url = receipt_url
+        const { error: updErr } = await supabase.from('expenses').update(patch).eq('id', editingId)
+        if (updErr) throw updErr
+      } else {
+        const { error: insErr } = await supabase.from('expenses').insert({
+          spent_on: spentOn, vendor: vendor || null, category: finalCategory,
+          amount: Number(amount), notes: notes || null, receipt_url: receipt_url ?? null, settled: false,
+        })
+        if (insErr) throw insErr
+      }
+      resetForm()
       await loadExpenses()
     } catch (e) {
       setError(e.message || 'Could not save the expense.')
@@ -362,9 +394,12 @@ export default function App() {
             </div>
           </div>
 
-          {/* Add expense */}
-          <div className={cardCls + ' p-[22px] mb-[22px] animate-rise'}>
-            <div className="text-sm font-semibold tracking-[-0.005em] mb-4">Add expense</div>
+          {/* Add / edit expense */}
+          <div id="expense-form" className={cardCls + ' p-[22px] mb-[22px] animate-rise'
+            + (editingId ? ' ring-2 ring-accent/30' : '')}>
+            <div className="text-sm font-semibold tracking-[-0.005em] mb-4">
+              {editingId ? 'Edit expense' : 'Add expense'}
+            </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3.5 items-end">
               <div className="lg:col-span-2">
                 <label className={labelCls}>Date</label>
@@ -404,15 +439,21 @@ export default function App() {
                 <label className={labelCls}>Receipt</label>
                 <input id="receipt-input" className={inputCls + ' !py-[7px] !text-[13px]'}
                   type="file" accept="image/*" onChange={e => setFile(e.target.files[0] || null)} />
+                {editingId && (
+                  <div className="text-[11px] text-muted mt-1">Leave empty to keep the current receipt.</div>
+                )}
               </div>
             </div>
             <div className="flex items-center gap-3.5 mt-[18px]">
               <button className={btnPrimary} onClick={addExpense} disabled={saving}>
                 {saving
                   ? <span className="w-3.5 h-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin inline-block" />
-                  : <Icon name="plus" size={16} strokeWidth={2.2} />}
-                {saving ? 'Saving…' : 'Add expense'}
+                  : <Icon name={editingId ? 'check' : 'plus'} size={16} strokeWidth={2.2} />}
+                {saving ? 'Saving…' : editingId ? 'Save changes' : 'Add expense'}
               </button>
+              {editingId && (
+                <button className={btnGhost} onClick={resetForm} disabled={saving}>Cancel</button>
+              )}
               {error && <span className="text-[13px] text-danger">{error}</span>}
             </div>
           </div>
@@ -476,6 +517,8 @@ export default function App() {
                               <Icon name="receipt" size={15} strokeWidth={1.6} /></span>}
                       </td>
                       <td className="px-4 py-3.5 text-sm border-b border-line-soft text-right whitespace-nowrap">
+                        <button className={pillBase + ' mr-2 text-ink-soft border-line hover:border-accent/40 hover:text-accent'}
+                          onClick={() => startEdit(e)}>Edit</button>
                         <button className={pillSettle + ' mr-2'} onClick={() => setSettled(e.id, view !== 'settled')}>
                           {view === 'settled' ? 'Reopen' : 'Settle'}
                         </button>
@@ -511,6 +554,8 @@ export default function App() {
                         </a>
                       )}
                       <div className="ml-auto flex gap-2">
+                        <button className={pillBase + ' text-ink-soft border-line hover:border-accent/40 hover:text-accent'}
+                          onClick={() => startEdit(e)}>Edit</button>
                         <button className={pillSettle} onClick={() => setSettled(e.id, view !== 'settled')}>
                           {view === 'settled' ? 'Reopen' : 'Settle'}
                         </button>
