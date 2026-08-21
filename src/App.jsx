@@ -86,17 +86,24 @@ function NavButton({ active, onClick, icon, label, count }) {
   )
 }
 
-function StatCard({ primary, label, value, color }) {
+function StatCard({ primary, label, value, color, sub, onClick, active, dim }) {
+  const clickable = !!onClick
   return (
-    <div className={'border rounded-[14px] shadow-stat px-4 pt-4 pb-[18px] '
-      + (primary ? 'bg-[linear-gradient(165deg,#13624F,#0D493A)] border-[#0D493A]' : 'bg-surface border-line')}>
+    <button type="button" onClick={onClick} disabled={!clickable}
+      className={'text-left w-full border rounded-[16px] shadow-stat px-4 pt-4 pb-[16px] transition '
+        + (clickable ? 'cursor-pointer hover:-translate-y-0.5 ' : 'cursor-default ')
+        + (primary ? 'bg-[linear-gradient(165deg,#13624F,#0D493A)] border-[#0D493A] '
+          : active ? 'bg-surface border-accent ring-2 ring-accent/25 '
+          : 'bg-surface border-line ')
+        + (dim ? 'opacity-45 hover:opacity-100 ' : '')}>
       <div className={'flex items-center gap-[7px] mb-2.5 text-[11px] font-semibold tracking-[0.10em] uppercase '
         + (primary ? 'text-white/70' : 'text-muted')}>
         {color && <span className="w-2 h-2 rounded-full shrink-0" style={{ background: color }} />}
         {label}
       </div>
       <div className={'text-[22px] font-bold tracking-[-0.01em] tabular-nums ' + (primary ? 'text-white' : 'text-ink')}>{value}</div>
-    </div>
+      {sub && <div className={'text-[11px] mt-1 ' + (primary ? 'text-white/60' : 'text-muted')}>{sub}</div>}
+    </button>
   )
 }
 
@@ -248,17 +255,21 @@ export default function App() {
 
   const catTotal = (cat) => scoped.filter(e => e.category === cat)
     .reduce((s, e) => s + Number(e.amount || 0), 0)
-  const total = scoped.reduce((s, e) => s + Number(e.amount || 0), 0)
+  const grandTotal = scoped.reduce((s, e) => s + Number(e.amount || 0), 0)
 
+  // catScoped drives the "reflects the filter" widgets (hero total, timeline, list).
+  const catScoped = catFilter === 'All' ? scoped : scoped.filter(e => e.category === catFilter)
+  const total = catScoped.reduce((s, e) => s + Number(e.amount || 0), 0)
+
+  // The donut always shows the full breakdown (a one-slice pie is useless).
   const pieData = allCats.map(c => ({ name: c, value: catTotal(c) })).filter(d => d.value > 0)
 
   const byDate = {}
-  scoped.forEach(e => { byDate[e.spent_on] = (byDate[e.spent_on] || 0) + Number(e.amount || 0) })
+  catScoped.forEach(e => { byDate[e.spent_on] = (byDate[e.spent_on] || 0) + Number(e.amount || 0) })
   const timeData = Object.entries(byDate).map(([date, value]) => ({ date, value }))
     .sort((a, b) => a.date.localeCompare(b.date))
 
-  const listed = scoped.filter(e => {
-    if (catFilter !== 'All' && e.category !== catFilter) return false
+  const listed = catScoped.filter(e => {
     if (fromDate && e.spent_on < fromDate) return false
     if (toDate && e.spent_on > toDate) return false
     if (search) {
@@ -326,51 +337,100 @@ export default function App() {
             ))}
           </div>
 
-          {/* Summary cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 mb-[22px] animate-rise">
-            <StatCard primary label={view === 'settled' ? 'Settled total' : 'Total spent'} value={inr.format(total)} />
-            {allCats.map(c => <StatCard key={c} label={c} color={colorFor(c)} value={inr.format(catTotal(c))} />)}
-          </div>
+          {/* Dashboard — bento grid. Everything reflects the active category filter. */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 mb-[22px] animate-rise">
 
-          {/* Charts */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-[18px] mb-[22px]">
-            <div className={cardCls + ' p-5'}>
+            {/* Hero total — reflects the filter */}
+            <div className="col-span-2 rounded-[18px] shadow-stat p-5 min-h-[212px] flex flex-col border border-[#0C4234]
+              bg-[linear-gradient(158deg,#14624F,#0B3F31)]">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-[11px] font-semibold tracking-[0.10em] uppercase text-white/70">
+                  {catFilter === 'All'
+                    ? (view === 'settled' ? 'Settled total' : 'Total spent')
+                    : catFilter + ' · ' + view}
+                </div>
+                {catFilter !== 'All' && (
+                  <button type="button" onClick={() => setCatFilter('All')}
+                    className="text-[11px] font-semibold text-white/85 bg-white/10 hover:bg-white/20 rounded-full px-2.5 py-1 transition">
+                    Clear ✕
+                  </button>
+                )}
+              </div>
+              <div className="font-serif text-white text-[40px] leading-none tabular-nums mt-3">{inr.format(total)}</div>
+              <div className="text-[12.5px] text-white/70 mt-2">
+                {catScoped.length} {catScoped.length === 1 ? 'entry' : 'entries'}
+                {catFilter !== 'All' && grandTotal > 0 ? ' · ' + Math.round((total / grandTotal) * 100) + '% of all spend' : ''}
+              </div>
+              {pieData.length > 0 && (
+                <div className="mt-auto pt-4">
+                  <div className="flex h-2 rounded-full overflow-hidden bg-white/10">
+                    {pieData.map(d => (
+                      <div key={d.name} title={`${d.name}: ${inr.format(d.value)}`}
+                        style={{ width: (grandTotal ? (d.value / grandTotal) * 100 : 0) + '%',
+                          background: colorFor(d.name),
+                          opacity: catFilter === 'All' || catFilter === d.name ? 1 : 0.35 }} />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Spend by category — always the full breakdown, click to filter */}
+            <div className={cardCls + ' col-span-2 p-5 min-h-[212px]'}>
               <div className="text-sm font-semibold tracking-[-0.005em]">Spend by category</div>
-              <div className="text-[12px] text-muted mt-0.5">Share of {view} spending</div>
+              <div className="text-[12px] text-muted mt-0.5">Full breakdown · tap to filter</div>
               {pieData.length ? (
                 <div className="flex gap-[18px] flex-wrap items-center mt-1.5">
-                  <div className="relative w-[190px] h-[200px] shrink-0">
+                  <div className="relative w-[164px] h-[172px] shrink-0">
                     <ResponsiveContainer width="100%" height="100%">
                       <PieChart>
                         <Pie data={pieData} dataKey="value" nameKey="name"
-                          innerRadius={62} outerRadius={92} paddingAngle={2} cornerRadius={4} stroke="none">
-                          {pieData.map(d => <Cell key={d.name} fill={colorFor(d.name)} />)}
+                          innerRadius={56} outerRadius={84} paddingAngle={2} cornerRadius={4} stroke="none"
+                          onClick={(d) => { const n = d && (d.name || (d.payload && d.payload.name)); if (n) setCatFilter(catFilter === n ? 'All' : n) }}>
+                          {pieData.map(d => <Cell key={d.name} fill={colorFor(d.name)} cursor="pointer"
+                            opacity={catFilter === 'All' || catFilter === d.name ? 1 : 0.3} />)}
                         </Pie>
                         <Tooltip content={<ChartTooltip />} />
                       </PieChart>
                     </ResponsiveContainer>
                     <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                      <div className="text-[11px] font-semibold tracking-[0.10em] uppercase text-muted mb-[3px]">Total</div>
-                      <div className="font-serif text-[20px] text-ink tabular-nums">{compactInr(total)}</div>
+                      <div className="text-[11px] font-semibold tracking-[0.10em] uppercase text-muted mb-[3px]">All</div>
+                      <div className="font-serif text-[19px] text-ink tabular-nums">{compactInr(grandTotal)}</div>
                     </div>
                   </div>
-                  <ul className="flex-1 min-w-[150px] list-none m-0 p-0 flex flex-col gap-2.5">
-                    {pieData.map(d => (
-                      <li key={d.name} className="flex items-center gap-2.5 text-[13px] text-ink-soft">
-                        <span className="w-2 h-2 rounded-full shrink-0" style={{ background: colorFor(d.name) }} />
-                        <span>{d.name}</span>
-                        <span className="ml-auto font-semibold text-ink tabular-nums">{inr.format(d.value)}</span>
-                      </li>
-                    ))}
+                  <ul className="flex-1 min-w-[150px] list-none m-0 p-0 flex flex-col gap-1.5">
+                    {pieData.map(d => {
+                      const on = catFilter === 'All' || catFilter === d.name
+                      return (
+                        <li key={d.name}>
+                          <button type="button" onClick={() => setCatFilter(catFilter === d.name ? 'All' : d.name)}
+                            className={'w-full flex items-center gap-2.5 text-[13px] py-0.5 transition ' + (on ? 'text-ink-soft' : 'text-muted opacity-50 hover:opacity-100')}>
+                            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: colorFor(d.name) }} />
+                            <span>{d.name}</span>
+                            <span className="ml-auto font-semibold text-ink tabular-nums">{inr.format(d.value)}</span>
+                          </button>
+                        </li>
+                      )
+                    })}
                   </ul>
                 </div>
-              ) : <div className="h-[200px]"><ChartEmpty /></div>}
+              ) : <div className="h-[172px]"><ChartEmpty /></div>}
             </div>
 
-            <div className={cardCls + ' p-5'}>
+            {/* Category tiles — click to filter */}
+            {allCats.map(c => (
+              <StatCard key={c} label={c} color={colorFor(c)} value={inr.format(catTotal(c))}
+                sub={grandTotal > 0 ? Math.round((catTotal(c) / grandTotal) * 100) + '% of total' : '—'}
+                onClick={() => setCatFilter(catFilter === c ? 'All' : c)}
+                active={catFilter === c}
+                dim={catFilter !== 'All' && catFilter !== c} />
+            ))}
+
+            {/* Spend over time — wide tile, reflects the filter */}
+            <div className={cardCls + ' col-span-2 lg:col-span-4 p-5'}>
               <div className="text-sm font-semibold tracking-[-0.005em]">Spend over time</div>
-              <div className="text-[12px] text-muted mt-0.5">Daily totals</div>
-              <div className="h-[210px] mt-1.5">
+              <div className="text-[12px] text-muted mt-0.5">Daily totals{catFilter !== 'All' ? ' · ' + catFilter : ''}</div>
+              <div className="h-[230px] mt-2">
                 {timeData.length ? (
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={timeData} margin={{ top: 10, right: 6, left: -6, bottom: 0 }}>
